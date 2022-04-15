@@ -17,7 +17,11 @@ fn main() {
         Ok(tt) => {
             println!("{:?}", tt);
             match parser().parse(tt) {
-                Ok(program) => {
+                Ok(mut program) => {
+                    println!("{:?}", program);
+
+                    program.typeck();
+
                     println!("{:?}", program);
                     //codegen(program)
                 }

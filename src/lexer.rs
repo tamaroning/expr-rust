@@ -36,6 +36,8 @@ pub enum Token {
     Fn,
     // let
     Let,
+    // i32
+    I32,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -46,24 +48,25 @@ pub struct Ident {
 pub fn lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
     let tk_misc = {
         use Token::*;
-        just("(")
-            .to(OpenParen)
-            .or(just(")").to(CloseParen))
-            .or(just("{").to(OpenBraces))
-            .or(just("}").to(CloseBraces))
-            .or(just(";").to(Semi))
-            .or(just(":").to(Colon))
-            .or(just("->").to(Arrow))
-            .or(just("=").to(Eq))
-            .or(just("+").to(Plus))
-            .or(just("-").to(Minus))
-            .or(just("*").to(Asterisk))
-            .or(just("/").to(Slash))
+        choice((
+            just("(").to(OpenParen),
+            just(")").to(CloseParen),
+            just("{").to(OpenBraces),
+            just("}").to(CloseBraces),
+            just(";").to(Semi),
+            just(":").to(Colon),
+            just("->").to(Arrow),
+            just("=").to(Eq),
+            just("+").to(Plus),
+            just("-").to(Minus),
+            just("*").to(Asterisk),
+            just("/").to(Slash),
+        ))
     };
 
     let tk_keyword = {
         use Token::*;
-        just("fn").to(Fn).or(just("let").to(Let))
+        choice((just("fn").to(Fn), just("let").to(Let), just("i32").to(I32)))
     };
 
     let tk_ident = text::ident()

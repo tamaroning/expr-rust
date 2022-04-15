@@ -1,3 +1,5 @@
+mod typeck;
+
 use crate::lexer::Ident;
 use crate::ty::Type;
 
@@ -17,12 +19,13 @@ pub struct Func {
     pub args: Vec<String>,
     pub ret_ty: Type,
     pub body: Box<Expr>,
+    pub ty: Type,
 }
 
 #[derive(Debug)]
 pub struct Expr {
-    kind: ExprKind,
-    ty: Type,
+    pub kind: ExprKind,
+    pub ty: Type,
 }
 
 impl Expr {
