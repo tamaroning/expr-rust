@@ -2,4 +2,5 @@
 pub enum Type {
     I32,
     Unit,
+    Unresolved,
 }

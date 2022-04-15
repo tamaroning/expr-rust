@@ -1,7 +1,7 @@
 use chumsky::prelude::*;
 
-#[derive(Debug, Clone, Hash)]
-pub enum TokenKind {
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub enum Token {
     // (
     OpenParen,
     // )
@@ -38,14 +38,14 @@ pub enum TokenKind {
     Let,
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Ident {
     pub sym: String,
 }
 
-pub fn lexer() -> impl Parser<char, Vec<TokenKind>, Error = Simple<char>> {
-    let misc = {
-        use TokenKind::*;
+pub fn lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
+    let tk_misc = {
+        use Token::*;
         just("(")
             .to(OpenParen)
             .or(just(")").to(CloseParen))
@@ -61,18 +61,18 @@ pub fn lexer() -> impl Parser<char, Vec<TokenKind>, Error = Simple<char>> {
             .or(just("/").to(Slash))
     };
 
-    let keyword = {
-        use TokenKind::*;
+    let tk_keyword = {
+        use Token::*;
         just("fn").to(Fn).or(just("let").to(Let))
     };
 
-    let ident = text::ident()
+    let tk_ident = text::ident()
         .padded()
-        .map(|sym| TokenKind::Ident(Ident { sym }));
+        .map(|sym| Token::Ident(Ident { sym }));
 
-    let num = text::int(10).map(|s: String| TokenKind::Num(s.parse().unwrap()));
+    let tk_num = text::int(10).map(|s: String| Token::Num(s.parse().unwrap()));
 
-    let token = misc.or(keyword).or(ident).or(num);
+    let token = tk_misc.or(tk_keyword).or(tk_ident).or(tk_num);
 
-    token.padded().repeated().then_ignore(end())
+    token.padded().repeated()
 }

@@ -20,7 +20,22 @@ pub struct Func {
 }
 
 #[derive(Debug)]
-pub enum Expr {
+pub struct Expr {
+    kind: ExprKind,
+    ty: Type,
+}
+
+impl Expr {
+    pub fn new(kind: ExprKind) -> Self {
+        Expr {
+            kind,
+            ty: Type::Unresolved,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum ExprKind {
     LitExpr(LitExpr),
     IdentExpr(Ident),
     BinaryOpExpr(BinaryOpExpr),
