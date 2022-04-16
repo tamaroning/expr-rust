@@ -1,13 +1,15 @@
 mod ast;
-//mod codegen;
+mod codegen;
 mod lexer;
 mod parser;
 mod ty;
+mod typeck;
 
-//use codegen::codegen;
 use chumsky::Parser;
+use codegen::codegen;
 use lexer::lexer;
 use parser::parser;
+use typeck::Typeck;
 
 fn main() {
     let file_name = std::env::args().nth(1).unwrap();
@@ -23,7 +25,7 @@ fn main() {
                     program.typeck();
 
                     println!("{:?}", program);
-                    //codegen(program)
+                    codegen(program)
                 }
                 Err(parse_errs) => parse_errs
                     .into_iter()

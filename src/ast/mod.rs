@@ -1,5 +1,3 @@
-mod typeck;
-
 use crate::lexer::Ident;
 use crate::ty::Type;
 

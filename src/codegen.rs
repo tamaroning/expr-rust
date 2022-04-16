@@ -1,38 +1,48 @@
-use llvm::core::*;
-use llvm::prelude::*;
-use llvm_sys as llvm;
+use inkwell::builder::Builder;
+use inkwell::context::Context;
+use inkwell::module::Module;
+use inkwell::types::{self, IntType};
+use inkwell::values::{self, BasicValue};
 use std::ffi::CString;
 
 use crate::ast::*;
+use crate::lexer::Ident;
 use crate::ty::Type;
 
-type GenResult = Result<LLVMValueRef, String>;
+type GenResult<'gen> = Result<GenValue<'gen>, String>;
 
-pub struct Codegen {
-    context: LLVMContextRef,
-    module: LLVMModuleRef,
-    builder: LLVMBuilderRef,
+enum GenValue<'gen> {
+    Func(values::FunctionValue<'gen>),
+    Int(values::IntValue<'gen>),
+    Instr(values::InstructionValue<'gen>),
+    NoValue,
 }
 
-impl Codegen {
-    unsafe fn new(mod_name: String) -> Self {
-        let c_mod_name = CString::new(mod_name).unwrap();
+pub fn codegen(program: Program) {
+    let mut codegen = unsafe { CodeGen::new("mod_name") };
+}
 
-        let context = LLVMContextCreate();
-        Codegen {
+struct CodeGen<'ctx> {
+    context: Context,
+    module: Module<'ctx>,
+    builder: Builder<'ctx>,
+}
+
+impl<'ctx> CodeGen<'ctx> {
+    unsafe fn new(mod_name: &str) -> Self {
+        let context = Context::create();
+        let module = context.create_module(mod_name);
+        let builder = context.create_builder();
+        CodeGen {
             context,
-            module: LLVMModuleCreateWithName(c_mod_name.as_ptr()),
-            builder: LLVMCreateBuilder(),
+            module,
+            builder,
         }
     }
 
-    pub unsafe fn dump_module(&self) {
-        LLVMDumpModule(self.module);
-    }
-
-    pub unsafe fn write_llvm_bc(&mut self) {
-        let file_name = CString::new("a.bc").unwrap();
-        llvm::bit_writer::LLVMWriteBitcodeToFile(self.module, file_name.as_ptr());
+    unsafe fn write_bc_to_path(&self) {
+        self.module
+            .write_bitcode_to_path(std::path::Path::new("a.bc"));
     }
 
     unsafe fn gen_program(&mut self, program: Program) -> Result<(), String> {
@@ -54,29 +64,39 @@ impl Codegen {
             args,
             ret_ty,
             body,
+            ty,
         } = func;
-        let ret_llty = LLVMVoidType();
-        let func: LLVMValueRef =
-            LLVMAddFunction(self.module, ident_to_cstr(name).as_ptr(), ret_llty);
-        // TODO: func args
-        let bb_entry: LLVMBasicBlockRef =
-            LLVMAppendBasicBlock(func, CString::new("entry").unwrap().as_ptr());
-        LLVMPositionBuilderAtEnd(self.builder, bb_entry);
-        self.gen_func_body(*body);
+        let ret_llty = self.context.i32_type();
+        let fn_llty = ret_llty.fn_type(&[], false);
+        let func = self.module.add_function(&name.sym, fn_llty, None);
 
-        Ok(func)
+        // TODO: func args
+        let bb_entry = self.context.append_basic_block(func, "entry");
+
+        self.builder.position_at_end(bb_entry);
+
+        self.gen_func_body(*body)?;
+
+        Ok(GenValue::Func(func))
     }
 
-    unsafe fn gen_func_body(&mut self, body: Expr) {
+    unsafe fn gen_func_body(&mut self, body: Expr) -> GenResult {
         // body corresponds to inner expr of block expr
-        self.gen_expr(body);
+        let body_value = self.gen_expr(body)?;
 
-        LLVMBuildRetVoid(self.builder);
+        let ret: Option<&dyn values::BasicValue> = match &body_value {
+            GenValue::NoValue => None,
+            GenValue::Int(int_value) => Some(int_value),
+            _ => todo!(),
+        };
+        self.builder.build_return(ret);
+
+        Ok(GenValue::NoValue)
     }
 
     unsafe fn gen_expr(&mut self, expr: Expr) -> GenResult {
-        match expr {
-            Expr::LitExpr(lit) => self.gen_lit_expr(lit),
+        match expr.kind {
+            ExprKind::LitExpr(lit) => self.gen_lit_expr(lit),
             _ => todo!()
             //Expr::IdentExpr(ident) => self.gen_ident_expr(ident),
             //Expr::UnaryOpExpr(unary) => self.gen_unary_op_expr(unary),
@@ -92,8 +112,8 @@ impl Codegen {
 
     unsafe fn make_num(&mut self, n: i32) -> GenResult {
         // TODO: what should i pass to 2nd arg (unsigned long long) ?
-        let v = LLVMConstInt(LLVMInt32Type(), 100, 0);
-        Ok(v)
+        let v = self.context.i32_type().const_int(1 as u64, false);
+        Ok(GenValue::Int(v))
     }
 
     /*
@@ -107,44 +127,26 @@ impl Codegen {
     */
 
     unsafe fn gen_binary_op_expr(&mut self, binary: BinaryOpExpr) -> GenResult {
-        let res = match binary {
-            BinaryOpExpr::Add(lhs, rhs) => LLVMBuildAdd(
-                self.builder,
-                self.gen_expr(*lhs)?,
-                self.gen_expr(*rhs)?,
-                CString::new("add").unwrap().as_ptr(),
-            ),
-            BinaryOpExpr::Sub(lhs, rhs) => LLVMBuildAdd(
-                self.builder,
-                self.gen_expr(*lhs)?,
-                self.gen_expr(*rhs)?,
-                CString::new("sub").unwrap().as_ptr(),
-            ),
-            BinaryOpExpr::Mul(lhs, rhs) => LLVMBuildAdd(
-                self.builder,
-                self.gen_expr(*lhs)?,
-                self.gen_expr(*rhs)?,
-                CString::new("mul").unwrap().as_ptr(),
-            ),
-            BinaryOpExpr::Div(lhs, rhs) => LLVMBuildAdd(
-                self.builder,
-                self.gen_expr(*lhs)?,
-                self.gen_expr(*rhs)?,
-                CString::new("div").unwrap().as_ptr(),
-            ),
+        let (lhs, rhs) = match &binary {
+            BinaryOpExpr::Add(lhs, rhs) => (&**lhs, &**rhs),
+            BinaryOpExpr::Sub(lhs, rhs) => (&**lhs, &**rhs),
+            BinaryOpExpr::Mul(lhs, rhs) => (&**lhs, &**rhs),
+            BinaryOpExpr::Div(lhs, rhs) => (&**lhs, &**rhs),
+        };
+
+        let (lhs_gen_val, rhs_gen_val) = (self.gen_expr(*lhs)?, self.gen_expr(*rhs)?);
+
+        let ret = match (lhs_gen_val, rhs_gen_val) {
+            (GenValue::Int(lhs_int_value), GenValue::Int(rhs_int_value)) => {
+                let int_value = self
+                    .builder
+                    .build_int_add(lhs_int_value, rhs_int_value, "add");
+                GenValue::Int(int_value)
+            }
             _ => todo!(),
         };
-        Ok(res)
-    }
-}
 
-pub fn codegen(program: Program) {
-    let mut codegen = unsafe { Codegen::new("MyModule".to_string()) };
-
-    unsafe {
-        codegen.gen_program(program);
-        codegen.dump_module();
-        codegen.write_llvm_bc();
+        Ok(ret)
     }
 }
 

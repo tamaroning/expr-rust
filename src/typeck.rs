@@ -1,15 +1,14 @@
-use super::*;
+use crate::ast::*;
 use crate::ty::Type;
 
-// Ok
 type TypeckResult = Result<Type, String>;
 
 pub trait Typeck {
     fn typeck(&mut self) -> TypeckResult;
 }
 
-impl Program {
-    pub fn typeck(&mut self) -> TypeckResult {
+impl Typeck for Program {
+    fn typeck(&mut self) -> TypeckResult {
         let Program { items } = self;
         for item in items {
             item.typeck()?;
@@ -18,8 +17,8 @@ impl Program {
     }
 }
 
-impl Item {
-    pub fn typeck(&mut self) -> TypeckResult {
+impl Typeck for Item {
+    fn typeck(&mut self) -> TypeckResult {
         match self {
             Item::Func(func) => {
                 func.typeck()?;
@@ -30,8 +29,8 @@ impl Item {
 }
 
 // TODO: updaye func.ty
-impl Func {
-    pub fn typeck(&mut self) -> TypeckResult {
+impl Typeck for Func {
+    fn typeck(&mut self) -> TypeckResult {
         // TODO: type check args
         let expected_ret_ty = &self.ret_ty;
         let actual_ret_ty = self.body.typeck()?;
@@ -52,8 +51,8 @@ impl Func {
     }
 }
 
-impl Expr {
-    pub fn typeck(&mut self) -> TypeckResult {
+impl Typeck for Expr {
+    fn typeck(&mut self) -> TypeckResult {
         let ty = match &mut self.kind {
             ExprKind::LitExpr(lit_expr) => lit_expr.typeck(),
             ExprKind::BinaryOpExpr(binary_op_expr) => binary_op_expr.typeck(),
@@ -65,7 +64,7 @@ impl Expr {
     }
 }
 
-impl LitExpr {
+impl Typeck for LitExpr {
     fn typeck(&mut self) -> TypeckResult {
         match self {
             LitExpr::Num(_) => Ok(Type::I32),
@@ -73,7 +72,7 @@ impl LitExpr {
     }
 }
 
-impl BinaryOpExpr {
+impl Typeck for BinaryOpExpr {
     fn typeck(&mut self) -> TypeckResult {
         match self {
             BinaryOpExpr::Add(lhs, rhs)
